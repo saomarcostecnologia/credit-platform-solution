@@ -35,11 +35,17 @@ export class AuroraAdapter implements IDataStorage {
       
       return null;
     } catch (error) {
-      this.monitoring.recordError('aurora_read_error', error);
-      timer.end();
-      throw error;
+        // Verificar se é um Error antes de passar
+        if (error instanceof Error) {
+          this.monitoring.recordError('aurora_read_error', error);
+        } else {
+          // Caso não seja um Error, crie um novo objeto Error
+          this.monitoring.recordError('aurora_read_error', new Error(String(error)));
+        }
+        timer.end();
+        throw error;
+        }
     }
-  }
   
   async query(params: any): Promise<any[]> {
     const timer = this.monitoring.startTimer('aurora_query');
@@ -58,16 +64,22 @@ export class AuroraAdapter implements IDataStorage {
       timer.end();
       
       if (result.records) {
-        return result.records.map(record => this.recordToObject(record));
+        return result.records.map((record: any) => this.recordToObject(record));
       }
       
       return [];
     } catch (error) {
-      this.monitoring.recordError('aurora_query_error', error);
-      timer.end();
-      throw error;
+        // Verificar se é um Error antes de passar
+        if (error instanceof Error) {
+          this.monitoring.recordError('aurora_read_error', error);
+        } else {
+          // Caso não seja um Error, crie um novo objeto Error
+          this.monitoring.recordError('aurora_read_error', new Error(String(error)));
+        }
+        timer.end();
+        throw error;
+      }
     }
-  }
   
   async writeItem(item: any): Promise<void> {
     const timer = this.monitoring.startTimer('aurora_write_item');
@@ -85,11 +97,17 @@ export class AuroraAdapter implements IDataStorage {
       
       timer.end();
     } catch (error) {
-      this.monitoring.recordError('aurora_write_error', error);
-      timer.end();
-      throw error;
+        // Verificar se é um Error antes de passar
+        if (error instanceof Error) {
+          this.monitoring.recordError('aurora_read_error', error);
+        } else {
+          // Caso não seja um Error, crie um novo objeto Error
+          this.monitoring.recordError('aurora_read_error', new Error(String(error)));
+        }
+        timer.end();
+        throw error;
+      }
     }
-  }
   
   async updateItem(id: string, item: any): Promise<void> {
     const timer = this.monitoring.startTimer('aurora_update_item');
@@ -109,11 +127,17 @@ export class AuroraAdapter implements IDataStorage {
       
       timer.end();
     } catch (error) {
-      this.monitoring.recordError('aurora_update_error', error);
-      timer.end();
-      throw error;
+        // Verificar se é um Error antes de passar
+        if (error instanceof Error) {
+          this.monitoring.recordError('aurora_read_error', error);
+        } else {
+          // Caso não seja um Error, crie um novo objeto Error
+          this.monitoring.recordError('aurora_read_error', new Error(String(error)));
+        }
+        timer.end();
+        throw error;
+      }
     }
-  }
   
   async deleteItem(id: string): Promise<void> {
     const timer = this.monitoring.startTimer('aurora_delete_item');
@@ -129,11 +153,17 @@ export class AuroraAdapter implements IDataStorage {
       
       timer.end();
     } catch (error) {
-      this.monitoring.recordError('aurora_delete_error', error);
-      timer.end();
-      throw error;
+        // Verificar se é um Error antes de passar
+        if (error instanceof Error) {
+          this.monitoring.recordError('aurora_read_error', error);
+        } else {
+          // Caso não seja um Error, crie um novo objeto Error
+          this.monitoring.recordError('aurora_read_error', new Error(String(error)));
+        }
+        timer.end();
+        throw error;
+      }
     }
-  }
   
   async getMetrics(): Promise<any> {
     try {
@@ -165,10 +195,22 @@ export class AuroraAdapter implements IDataStorage {
   }
   
   // Métodos auxiliares privados
-  private recordToObject(record: AWS.RDSDataService.Record): any {
-    // Implementação de conversão de registro para objeto
-    // Omitido para brevidade
-    return {};
+  private recordToObject(record: any): any {
+    // Implementar a conversão adequada
+    const result: any = {};
+    
+    // Se você tiver campos específicos para extrair
+    if (record && Array.isArray(record)) {
+      // Supondo que o record é um array de valores de campo
+      record.forEach((field, index) => {
+        // Aqui você extrai os valores baseado na estrutura do record
+        const fieldValue = field.stringValue || field.longValue || field.doubleValue || field.booleanValue || null;
+        const fieldName = `field_${index}`; // Idealmente, você teria os nomes reais dos campos
+        result[fieldName] = fieldValue;
+      });
+    }
+    
+    return result;
   }
   
   private buildQueryFromParams(params: any): { sql: string; parameters: AWS.RDSDataService.SqlParameter[] } {

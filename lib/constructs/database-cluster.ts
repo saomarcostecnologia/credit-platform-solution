@@ -49,33 +49,32 @@ export class DatabaseCluster extends Construct {
     
     // Cluster Aurora
     this.cluster = new rds.DatabaseCluster(this, 'Database', {
-      engine: rds.DatabaseClusterEngine.auroraMysql({
-        version: rds.AuroraMysqlEngineVersion.VER_3_01_0,
-      }),
-      credentials: rds.Credentials.fromSecret(this.secret),
-      instanceProps: {
-        instanceType: props.instanceType,
-        vpcSubnets: {
-          subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS,
+        engine: rds.DatabaseClusterEngine.auroraMysql({
+          version: rds.AuroraMysqlEngineVersion.VER_3_01_0,
+        }),
+        credentials: rds.Credentials.fromSecret(this.secret),
+        instanceProps: {
+          instanceType: props.instanceType,
+          vpcSubnets: {
+            subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS,
+          },
+          vpc: props.vpc,
+          securityGroups: [this.securityGroup],
+          enablePerformanceInsights: true,
+          performanceInsightRetention: rds.PerformanceInsightRetention.DEFAULT,
         },
-        vpc: props.vpc,
-        securityGroups: [this.securityGroup],
-        enablePerformanceInsights: true,
-        performanceInsightRetention: rds.PerformanceInsightRetention.DEFAULT,
-        monitoringInterval,
-      },
-      instances,
-      parameterGroup: props.parameterGroup,
-      defaultDatabaseName: props.databaseName,
-      backup: {
-        retention: backupRetention,
-        preferredWindow: '03:00-04:00',
-      },
-      storageEncrypted: true,
-      deletionProtection,
-      cloudwatchLogsExports: ['error', 'general', 'slowquery', 'audit'],
-      cloudwatchLogsRetention: cdk.aws_logs.RetentionDays.ONE_MONTH,
-      monitoringRole: true,
+        instances: props.instances || 3,
+        monitoringInterval: props.monitoringInterval, 
+        parameterGroup: props.parameterGroup,
+        defaultDatabaseName: props.databaseName,
+        backup: {
+          retention: backupRetention,
+          preferredWindow: '03:00-04:00',
+        },
+        storageEncrypted: true,
+        deletionProtection,
+        cloudwatchLogsExports: ['error', 'general', 'slowquery', 'audit'],
+        cloudwatchLogsRetention: cdk.aws_logs.RetentionDays.ONE_MONTH,
     });
     
     // Tags para identificação de recursos
@@ -94,13 +93,13 @@ export class DatabaseCluster extends Construct {
     
     // Réplica em outra região
     const readReplica = new rds.CfnDBInstance(scope, id, {
-      dbInstanceIdentifier: `${this.cluster.clusterIdentifier}-replica-${region}`,
-      dbInstanceClass: 'db.r5.large',
-      engine: 'aurora-mysql',
-      availabilityZone: `${region}a`,
-      sourceRegion: cdk.Stack.of(this).region,
-      sourceDBInstanceIdentifier: cfnCluster.attrEndpointAddress,
-    });
+        dbInstanceIdentifier: `${this.cluster.clusterIdentifier}-replica-${region}`,
+        dbInstanceClass: 'db.r5.large',
+        engine: 'aurora-mysql',
+        availabilityZone: `${region}a`,
+        sourceRegion: cdk.Stack.of(this).region,
+        sourceDbInstanceIdentifier: cfnCluster.attrEndpointAddress, // Corrigido o casing
+      });
     
     return readReplica;
   }
