@@ -258,7 +258,7 @@ A solução foi projetada considerando:
 
 ## Contribuição
 
-Para contribuir com este projeto:
+Caso tenha interesse em contribuir com este projeto:
 
 1. Faça um fork do repositório
 2. Crie uma branch para sua funcionalidade (`git checkout -b feature/nova-funcionalidade`)
