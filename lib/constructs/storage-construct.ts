@@ -7,18 +7,18 @@ import * as rds from 'aws-cdk-lib/aws-rds';
 import * as kms from 'aws-cdk-lib/aws-kms';
 import { DatabaseCluster } from '../constructs/database-cluster';
 
-export interface StorageStackProps extends cdk.StackProps {
+export interface StorageConstructProps {
   vpc: ec2.IVpc;
   dataEncryptionKey: kms.IKey;
 }
 
-export class StorageStack extends cdk.Stack {
+export class StorageConstruct extends Construct {
   public readonly auroraCluster: DatabaseCluster;
   public readonly redisCluster: elasticache.CfnReplicationGroup;
   public readonly hotDataTable: dynamodb.Table;
   
-  constructor(scope: Construct, id: string, props: StorageStackProps) {
-    super(scope, id, props);
+  constructor(scope: Construct, id: string, props: StorageConstructProps) {
+    super(scope, id);
     
     // Parâmetros otimizados para o Aurora
     const auroraParams = new rds.ParameterGroup(this, 'AuroraParams', {
@@ -123,7 +123,7 @@ export class StorageStack extends cdk.Stack {
       }).ref,
     });
     
-    // DynamoDB para dados quentes
+    // DynamoDB para dados quentes - criação básica da tabela
     this.hotDataTable = new dynamodb.Table(this, 'HotDataTable', {
       tableName: 'credit-hot-data',
       partitionKey: { name: 'customerId', type: dynamodb.AttributeType.STRING },
@@ -133,25 +133,31 @@ export class StorageStack extends cdk.Stack {
       encryptionKey: props.dataEncryptionKey,
       pointInTimeRecovery: true,
       timeToLiveAttribute: 'expiration',
-      
-      // Replica para recuperação de desastres
-      replicationRegions: ['us-west-2'],
-      // Índices para consultas otimizadas
-      globalSecondaryIndexes: [
-        {
-          indexName: 'GSI1',
-          partitionKey: { name: 'dataType', type: dynamodb.AttributeType.STRING },
-          sortKey: { name: 'lastUpdated', type: dynamodb.AttributeType.NUMBER },
-          projectionType: dynamodb.ProjectionType.ALL,
-        },
-        {
-          indexName: 'GSI2',
-          partitionKey: { name: 'status', type: dynamodb.AttributeType.STRING },
-          sortKey: { name: 'createdAt', type: dynamodb.AttributeType.NUMBER },
-          projectionType: dynamodb.ProjectionType.INCLUDE,
-          nonKeyAttributes: ['customerId', 'amount', 'decision'],
-        },
-      ],
+    });
+    
+    // Configurar replicação cross-region usando CloudFormation baixo nível
+    const cfnTable = this.hotDataTable.node.defaultChild as dynamodb.CfnTable;
+    if (cfnTable) { // Verificação de segurança
+      // Use a propriedade correta para replicação na versão atual do CDK
+      cfnTable.addPropertyOverride('ReplicationSpecification', {
+        Region: ['us-west-2']
+      });
+    }
+    
+    // Adicionar índices secundários globais após a criação da tabela
+    this.hotDataTable.addGlobalSecondaryIndex({
+      indexName: 'GSI1',
+      partitionKey: { name: 'dataType', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'lastUpdated', type: dynamodb.AttributeType.NUMBER },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+    
+    this.hotDataTable.addGlobalSecondaryIndex({
+      indexName: 'GSI2',
+      partitionKey: { name: 'status', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'createdAt', type: dynamodb.AttributeType.NUMBER },
+      projectionType: dynamodb.ProjectionType.INCLUDE,
+      nonKeyAttributes: ['customerId', 'amount', 'decision'],
     });
     
     // Permitir acesso ao Aurora a partir dos Lambda

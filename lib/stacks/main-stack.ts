@@ -1,16 +1,22 @@
 import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
-import * as kms from 'aws-cdk-lib/aws-kms';
-import { StorageStack } from './storage-stack';
-import { IngestionStack } from './ingestion-stack';
-import { SecurityStack } from './security-stack';
-import { ObservabilityStack } from './observability-stack';
-import { ProcessingStack } from './processing-stack';
+
+// Importações corrigidas dos constructs
+import { SecurityConstruct } from '../../lib/constructs/security-construct';
+import { StorageConstruct } from '../../lib/constructs/storage-construct';
+import { IngestionConstruct } from '../../lib/constructs/ingestion-construct';
+import { ProcessingConstruct } from '../../lib/constructs/processing-construct';
+import { ObservabilityConstruct } from '../../lib/constructs/observability-construct';
+import { BackupAndDrConstruct } from '../../lib/constructs/backup-and-dr-construct';
 
 export class MainStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
+    
+    // Obter a região atual e a conta da stack
+    const currentRegion = cdk.Stack.of(this).region;
+    const currentAccount = cdk.Stack.of(this).account;
     
     // VPC compartilhada para todos os recursos
     const vpc = new ec2.Vpc(this, 'CreditPlatformVpc', {
@@ -35,43 +41,69 @@ export class MainStack extends cdk.Stack {
       ],
     });
     
-    // Stack de segurança (deve ser criada primeiro)
-    const securityStack = new SecurityStack(this, 'SecurityStack', {
+    // 1. Segurança - chaves de criptografia, WAF, etc.
+    const securityConstruct = new SecurityConstruct(this, 'Security', {
       vpc,
-      env: props?.env,
     });
     
-    // Stack de armazenamento
-    const storageStack = new StorageStack(this, 'StorageStack', {
+    // 2. Armazenamento - Aurora, Redis, DynamoDB
+    const storageConstruct = new StorageConstruct(this, 'Storage', {
       vpc,
-      dataEncryptionKey: securityStack.dataEncryptionKey,
-      env: props?.env,
+      dataEncryptionKey: securityConstruct.dataEncryptionKey,
     });
     
-    // Stack de ingestão
-    const ingestionStack = new IngestionStack(this, 'IngestionStack', {
+    // 3. Observabilidade - métricas, logs, alertas
+    const observabilityConstruct = new ObservabilityConstruct(this, 'Observability', {
       vpc,
-      hotDataTable: storageStack.hotDataTable,
-      dataEncryptionKey: securityStack.dataEncryptionKey,
-      env: props?.env,
+      auroraCluster: storageConstruct.auroraCluster,
+      hotDataTable: storageConstruct.hotDataTable,
+      keyspacesTableName: 'credit-data', // Nome da tabela Keyspaces
+      alertEmails: ['alerts@example.com'], // Substituir pelo email real
     });
     
-    // Stack de processamento
-    const processingStack = new ProcessingStack(this, 'ProcessingStack', {
+    // 4. Ingestão - pipelines para carregamento de dados
+    const ingestionConstruct = new IngestionConstruct(this, 'Ingestion', {
       vpc,
-      auroraCluster: storageStack.auroraCluster,
-      redisCluster: storageStack.redisCluster,
-      hotDataTable: storageStack.hotDataTable,
-      dataEncryptionKey: securityStack.dataEncryptionKey,
-      env: props?.env,
+      hotDataTable: storageConstruct.hotDataTable,
+      dataEncryptionKey: securityConstruct.dataEncryptionKey,
     });
     
-    // Stack de observabilidade
-    const observabilityStack = new ObservabilityStack(this, 'ObservabilityStack', {
+    // 5. Processamento - motor de decisão de crédito
+    const processingConstruct = new ProcessingConstruct(this, 'Processing', {
       vpc,
-      auroraCluster: storageStack.auroraCluster,
-      hotDataTable: storageStack.hotDataTable,
-      env: props?.env,
+      auroraCluster: storageConstruct.auroraCluster,
+      redisCluster: storageConstruct.redisCluster,
+      hotDataTable: storageConstruct.hotDataTable,
+      dataEncryptionKey: securityConstruct.dataEncryptionKey,
     });
+    
+    // 6. Backup e Disaster Recovery
+    const backupAndDrConstruct = new BackupAndDrConstruct(this, 'BackupAndDR', {
+      vpc,
+      auroraCluster: storageConstruct.auroraCluster,
+      primaryRegion: currentRegion,
+      secondaryRegion: currentRegion === 'us-east-1' ? 'us-west-2' : 'us-east-1', // Região secundária diferente da principal
+      retentionDays: 30,
+      retentionDaysArchive: 365,
+      alertTopic: observabilityConstruct.alertTopic,
+      domainName: 'creditplatform.example.com', // Substituir pelo domínio real
+    });
+    
+    // Adicionar recursos ao plano de backup
+    backupAndDrConstruct.addResourceToBackup(
+        storageConstruct.auroraCluster.cluster.clusterArn,
+        'RDS_AURORA_CLUSTER'
+    );
+    
+    backupAndDrConstruct.addResourceToBackup(
+        storageConstruct.hotDataTable.tableArn,
+        'DYNAMODB_TABLE'
+    );
+    
+    // Aplicar tags para identificação de recursos
+    cdk.Tags.of(this).add('Project', 'CreditPlatform');
+    cdk.Tags.of(this).add('Environment', cdk.Stack.of(this).stackName.includes('prod') ? 'Production' : 'Development');
+    cdk.Tags.of(this).add('Owner', 'DataEngineering');
+    cdk.Tags.of(this).add('CostCenter', 'Credit-1001');
   }
 }

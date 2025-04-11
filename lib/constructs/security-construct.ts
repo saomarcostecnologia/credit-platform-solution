@@ -4,10 +4,21 @@ import * as kms from 'aws-cdk-lib/aws-kms';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as wafv2 from 'aws-cdk-lib/aws-wafv2';
 import * as guardduty from 'aws-cdk-lib/aws-guardduty';
+import * as ec2 from 'aws-cdk-lib/aws-ec2';
 
-export class SecurityStack extends cdk.Stack {
-  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
-    super(scope, id, props);
+// A interface não deve estender StackProps, já que isso não é mais uma Stack
+export interface SecurityConstructProps {
+  vpc: ec2.IVpc;
+}
+
+// Mudar de Stack para Construct
+export class SecurityConstruct extends Construct {
+  public readonly dataEncryptionKey: kms.Key;
+  
+  // Alterar a assinatura do construtor para usar SecurityConstructProps
+  constructor(scope: Construct, id: string, props: SecurityConstructProps) {
+    // Para um Construct, super só recebe scope e id
+    super(scope, id);
     
     // Chave KMS para criptografia de dados
     const dataEncryptionKey = new kms.Key(this, 'DataEncryptionKey', {
@@ -83,5 +94,8 @@ export class SecurityStack extends cdk.Stack {
       enable: true,
       findingPublishingFrequency: 'FIFTEEN_MINUTES',
     });
+    
+    // Chave Kms 
+    this.dataEncryptionKey = dataEncryptionKey;
   }
 }
